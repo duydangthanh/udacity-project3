@@ -23,7 +23,7 @@ jobs:
         password: ${{ secrets.DOCKER_PASSWORD }}
 
     # Build and push for udagram-api-feed
-    - name: Build and push Docker image for subproject1
+    - name: Build and push Docker image for udagram-api-feed
       uses: docker/build-push-action@v5
       with:
         context: ./udagram-api-feed
@@ -32,7 +32,7 @@ jobs:
         tags: thanhduyuit/udagram-api-feed:latest
         
     # Build and push for udagram-api-user
-    - name: Build and push Docker image for subproject1
+    - name: Build and push Docker image for udagram-api-user
       uses: docker/build-push-action@v5
       with:
         context: ./udagram-api-user
@@ -41,7 +41,7 @@ jobs:
         tags: thanhduyuit/udagram-api-user:latest
         
     # Build and push for udagram-frontend
-    - name: Build and push Docker image for subproject1
+    - name: Build and push Docker image for udagram-frontend
       uses: docker/build-push-action@v5
       with:
         context: ./udagram-frontend
@@ -50,7 +50,7 @@ jobs:
         tags: thanhduyuit/udagram-frontend:latest
         
     # Build and push for udagram-reverseproxy
-    - name: Build and push Docker image for subproject1
+    - name: Build and push Docker image for udagram-reverseproxy
       uses: docker/build-push-action@v5
       with:
         context: ./udagram-reverseproxy
