@@ -1,0 +1,95 @@
+name: "Deploy Environment"
+description: "Deploy an environment"
+inputs:
+  ENVIRONMENT:
+    description: "Environment"
+    required: true
+  CAI_ARTIFACTORY_USER:
+    description: "The Artifactory username"
+    required: true
+  CAI_ARTIFACTORY_TOKEN:
+    description: "The Artifactory token"
+    required: true
+  ACCOUNT_ID:
+    description: "ID of non-prod AWS account"
+    required: true
+  ACCOUNT_NAME:
+    description: "Name of non-prod AWS account"
+    required: false
+  IMAGE_NAME:
+    description: "The name of the docker image"
+    required: true
+  AWS_REGION:
+    description: "AWS Region"
+    default: us-east-1
+  SPLUNK_PASSWORD:
+    required: true
+    description: splunk password
+  CHANGE_ID:
+    required: false
+    description: CRQ for AWS Secure access
+
+runs:
+  using: "composite"
+  steps:
+    - name: Setup AWS v2 CLI
+      uses: cai-actions/setup-aws-v2-cli@v1
+    - uses: ruby/setup-ruby@v1.158.0
+    - uses: actions/checkout@v3
+      with:
+        repository: CoxAuto-ProductionEngineering/shared-rake-tasks
+        ref: 'v1.3.0'
+        path: shared-rake-tasks
+
+    - name: Access your AWS Account
+      uses: cai-actions/aws-secure-access@v1
+      with:
+        account: ${{ inputs.ACCOUNT_ID }}
+        change_id: ${{ inputs.CHANGE_ID }}
+    # - name: Load a Hierachy of Values from Parameter Store Global
+    #   uses: MAN-actions/parameter-store@v1.0.2
+    #   with:
+    #     path: /pat/global/
+    #     recursive: true
+    #     naming   : relative
+    #     prefix   : GLOBAL
+    #     mask     : true
+    # - name: Load a Hierachy of Values from Parameter Store per environment
+    #   uses: MAN-actions/parameter-store@v1.0.2
+    #   with:
+    #       path: /pat/pricing-admin-api/${{ inputs.environment }}/
+    #       recursive: true
+    #       naming: relative
+    #       prefix: APP_CONFIG
+    #       mask: true    
+    - name: Deploy
+      shell: bash
+      env:
+        ARTIFACTORY_USER: ${{ inputs.CAI_ARTIFACTORY_USER }}
+        ARTIFACTORY_TOKEN: ${{ inputs.CAI_ARTIFACTORY_TOKEN }}
+        BUILD_ENV: ${{ inputs.ENVIRONMENT }}
+        CONTAINER_REGISTRY_HOSTNAME: "${{ inputs.ACCOUNT_ID }}.dkr.ecr.${{ inputs.AWS_REGION }}.amazonaws.com"
+        BUILD_VERSION: "${{ github.sha }}-${{ github.run_number}}"
+        ACCOUNT_ID: ${{ inputs.ACCOUNT_ID }}
+        AWS_REGION: ${{ inputs.AWS_REGION }}
+        ACCOUNT_NAME: ${{ inputs.ACCOUNT_NAME }}
+      run: |
+        sed -i -e "s/%splunk_password%/${{ inputs.SPLUNK_PASSWORD }}/g" ./eb-deploy/docker-compose.yml
+        rm -rf application.zip
+        (cd eb-deploy && zip -vr - * .[^.]*) > application.zip
+        ls
+        pwd
+        chmod +x application.zip
+        ARTIFACTORY_USERNAME=$(echo $ARTIFACTORY_USER | sed "s/@/%40/g")
+        bundle config set --global artifactory.coxautoinc.com ${ARTIFACTORY_USERNAME}:${ARTIFACTORY_TOKEN}
+        BUNDLER_VERSION=$(grep -A1 'BUNDLED WITH' Gemfile.lock | grep -v 'BUNDLED WITH' | xargs)
+        gem install bundler:${BUNDLER_VERSION}
+        export GIT_COMMIT=`git rev-parse --short HEAD`
+        export VPC_ID=`aws ec2 describe-vpcs --region ${AWS_REGION} --filter Name=tag:Name,Values=${ACCOUNT_NAME} --query='Vpcs[0].VpcId' --output text`
+        export PRIVATE_SUBNETS=`aws ec2 describe-subnets --region ${AWS_REGION} --filter Name=vpc-id,Values=${VPC_ID} Name=tag:SUB-Type,Values=Private --query 'Subnets[*].SubnetId' --output json | jq -rj 'join(",")'`
+        export SECURITY_GROUPS=`aws ec2 describe-security-groups --region ${AWS_REGION} --filter Name=vpc-id,Values=${VPC_ID} --filter Name=group-name,Values=allow_all_out,evj-api-allow-vpc-https-${BUILD_ENV} --query 'SecurityGroups[].GroupId' --output json | jq -rj 'join(",")'`
+        export MANAGED_SECURITY_GROUP=`aws ec2 describe-security-groups --region ${AWS_REGION} --filter Name=vpc-id,Values=${VPC_ID} --filter Name=group-name,Values=allow_all_out --query 'SecurityGroups[0].GroupId' --output text`
+        bundle config set --local deployment 'true'
+        bundle config set path 'vendor/bundle'
+        bundle install
+        bundle exec eb_deploy -p application.zip -e ${{ inputs.ENVIRONMENT }} -c ./eb-deploy/ebdeploy.yml --debug

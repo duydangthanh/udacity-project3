@@ -1,0 +1,23 @@
+name: Build java package and run unit test
+description: Build java package and run unit test
+inputs:
+  CAI_ARTIFACTORY_USER:
+    description: "The Artifactory username"
+    required: true
+  CAI_ARTIFACTORY_TOKEN:
+    description: "The Artifactory token"
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    - name: Build java package and run unit test
+      uses: MAN-Actions/maven-build@v1.1.1
+      with:
+        working_directory : "./modules/evj-api/"
+        artifactory_user  : ${{ inputs.CAI_ARTIFACTORY_USER }}
+        artifactory_token : ${{ inputs.CAI_ARTIFACTORY_TOKEN }}
+        java_version      : "17"
+        artifactory_repo  : "man-maven"
+        mvn_phase         : "package"
+        # mvn_extra_args    : "-Dmaven.test.skip"
